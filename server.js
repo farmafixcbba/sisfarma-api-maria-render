@@ -112,6 +112,95 @@
 		});
 	});
 
+// ============================================
+// CRUD LABORATORIOS
+// ============================================
+
+app.post('/api/laboratorios', (req, res) => {
+    const { laboratory } = req.body;
+    if (!laboratory || laboratory.trim() === '') {
+        return res.status(400).json({ error: 'El nombre es obligatorio' });
+    }
+    db.query('INSERT INTO laboratory (laboratory) VALUES (?)', [laboratory.trim()], (err, result) => {
+        if (err) {
+            console.error('Error al crear laboratorio:', err);
+            return res.status(500).json({ error: 'Error en el servidor', detalle: err.message });
+        }
+        res.json({ mensaje: 'Laboratorio creado', idlaboratory: result.insertId });
+    });
+});
+
+app.put('/api/laboratorios/:id', (req, res) => {
+    const { id } = req.params;
+    const { laboratory } = req.body;
+    if (!laboratory || laboratory.trim() === '') {
+        return res.status(400).json({ error: 'El nombre es obligatorio' });
+    }
+    db.query('UPDATE laboratory SET laboratory = ? WHERE idlaboratory = ?', [laboratory.trim(), id], (err) => {
+        if (err) return res.status(500).json({ error: 'Error en el servidor', detalle: err.message });
+        res.json({ mensaje: 'Laboratorio actualizado' });
+    });
+});
+
+app.delete('/api/laboratorios/:id', (req, res) => {
+    const { id } = req.params;
+    // Verificar si hay productos asociados
+    db.query('SELECT COUNT(*) AS total FROM product WHERE idlaboratory = ?', [id], (err, results) => {
+        if (err) return res.status(500).json({ error: 'Error en el servidor' });
+        if (results[0].total > 0) {
+            return res.status(400).json({ error: `No se puede eliminar. Hay ${results[0].total} productos con este laboratorio.` });
+        }
+        db.query('DELETE FROM laboratory WHERE idlaboratory = ?', [id], (err2) => {
+            if (err2) return res.status(500).json({ error: 'Error en el servidor', detalle: err2.message });
+            res.json({ mensaje: 'Laboratorio eliminado' });
+        });
+    });
+});
+
+// ============================================
+// CRUD CATEGORIAS
+// ============================================
+
+app.post('/api/categorias', (req, res) => {
+    const { category } = req.body;
+    if (!category || category.trim() === '') {
+        return res.status(400).json({ error: 'El nombre es obligatorio' });
+    }
+    db.query('INSERT INTO category (category) VALUES (?)', [category.trim()], (err, result) => {
+        if (err) {
+            console.error('Error al crear categoría:', err);
+            return res.status(500).json({ error: 'Error en el servidor', detalle: err.message });
+        }
+        res.json({ mensaje: 'Categoría creada', idcategory: result.insertId });
+    });
+});
+
+app.put('/api/categorias/:id', (req, res) => {
+    const { id } = req.params;
+    const { category } = req.body;
+    if (!category || category.trim() === '') {
+        return res.status(400).json({ error: 'El nombre es obligatorio' });
+    }
+    db.query('UPDATE category SET category = ? WHERE idcategory = ?', [category.trim(), id], (err) => {
+        if (err) return res.status(500).json({ error: 'Error en el servidor', detalle: err.message });
+        res.json({ mensaje: 'Categoría actualizada' });
+    });
+});
+
+app.delete('/api/categorias/:id', (req, res) => {
+    const { id } = req.params;
+    db.query('SELECT COUNT(*) AS total FROM product WHERE idcategory = ?', [id], (err, results) => {
+        if (err) return res.status(500).json({ error: 'Error en el servidor' });
+        if (results[0].total > 0) {
+            return res.status(400).json({ error: `No se puede eliminar. Hay ${results[0].total} productos con esta categoría.` });
+        }
+        db.query('DELETE FROM category WHERE idcategory = ?', [id], (err2) => {
+            if (err2) return res.status(500).json({ error: 'Error en el servidor', detalle: err2.message });
+            res.json({ mensaje: 'Categoría eliminada' });
+        });
+    });
+});
+
 	// 2. Búsqueda por nombre (ANTES de :id)
 	app.get('/api/productos/buscar/:texto', (req, res) => {
 		const { texto } = req.params;
