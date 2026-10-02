@@ -1318,6 +1318,46 @@ app.delete('/api/batch/:id', (req, res) => {
 		});
 	});
 
+// ============================================
+// ELIMINAR PRODUCTO (solo si no tiene lotes)
+// ============================================
+app.delete('/api/productos/:id', (req, res) => {
+    const { id } = req.params;
+
+    // Verificar si tiene lotes
+    db.query('SELECT COUNT(*) AS total FROM batch WHERE idproduct = ?', [id], (err, results) => {
+        if (err) return res.status(500).json({ error: 'Error en el servidor', detalle: err.message });
+        
+        if (results[0].total > 0) {
+            return res.status(400).json({ 
+                error: `No se puede eliminar. El producto tiene ${results[0].total} lote(s) asociado(s). Elimine los lotes primero.` 
+            });
+        }
+
+        // Verificar si tiene ventas asociadas (por seguridad)
+        db.query(`
+            SELECT COUNT(*) AS total 
+            FROM detail_sale ds 
+            INNER JOIN batch b ON ds.idbatch = b.idbatch 
+            WHERE b.idproduct = ?
+        `, [id], (err2, results2) => {
+            if (err2) return res.status(500).json({ error: 'Error en el servidor' });
+            
+            if (results2[0].total > 0) {
+                return res.status(400).json({ 
+                    error: 'No se puede eliminar. El producto tiene ventas registradas en el historial.' 
+                });
+            }
+
+            // Eliminar el producto
+            db.query('DELETE FROM product WHERE idproduct = ?', [id], (err3, result) => {
+                if (err3) return res.status(500).json({ error: 'Error en el servidor', detalle: err3.message });
+                if (result.affectedRows === 0) return res.status(404).json({ error: 'Producto no encontrado' });
+                res.json({ mensaje: 'Producto eliminado' });
+            });
+        });
+    });
+});
 
 	// ============================================
 	// INICIAR SERVIDOR
