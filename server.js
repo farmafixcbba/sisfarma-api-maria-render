@@ -872,7 +872,7 @@ app.delete('/api/locations/:id', (req, res) => {
 	});
 
 	// Obtener lotes disponibles de un producto
-	app.get('/api/productos/:id/lotes', (req, res) => {
+app.get('/api/productos/:id/lotes', (req, res) => {
     const { id } = req.params;
     const sql = `
         SELECT 
@@ -884,6 +884,11 @@ app.delete('/api/locations/:id', (req, res) => {
         WHERE b.idproduct = ? AND b.batch_stock > 0
         ORDER BY b.expiration_date ASC
     `;
+    db.query(sql, [id], (err, results) => {
+        if (err) return res.status(500).json({ error: 'Error en el servidor', detalle: err.message });
+        res.json(results);
+    });
+});
 
 	// Registrar venta completa (con transacción)
 	app.post('/api/ventas', (req, res) => {
