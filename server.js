@@ -201,6 +201,50 @@ app.delete('/api/categorias/:id', (req, res) => {
     });
 });
 
+// ============================================
+// CRUD UBICACIONES
+// ============================================
+
+app.post('/api/locations', (req, res) => {
+    const { location } = req.body;
+    if (!location || location.trim() === '') {
+        return res.status(400).json({ error: 'El nombre es obligatorio' });
+    }
+    db.query('INSERT INTO location (location, description) VALUES (?, ?)', [location.trim(), ''], (err, result) => {
+        if (err) {
+            console.error('Error al crear ubicación:', err);
+            return res.status(500).json({ error: 'Error en el servidor', detalle: err.message });
+        }
+        res.json({ mensaje: 'Ubicación creada', idlocation: result.insertId });
+    });
+});
+
+app.put('/api/locations/:id', (req, res) => {
+    const { id } = req.params;
+    const { location } = req.body;
+    if (!location || location.trim() === '') {
+        return res.status(400).json({ error: 'El nombre es obligatorio' });
+    }
+    db.query('UPDATE location SET location = ? WHERE idlocation = ?', [location.trim(), id], (err) => {
+        if (err) return res.status(500).json({ error: 'Error en el servidor', detalle: err.message });
+        res.json({ mensaje: 'Ubicación actualizada' });
+    });
+});
+
+app.delete('/api/locations/:id', (req, res) => {
+    const { id } = req.params;
+    db.query('SELECT COUNT(*) AS total FROM product WHERE idlocation = ?', [id], (err, results) => {
+        if (err) return res.status(500).json({ error: 'Error en el servidor' });
+        if (results[0].total > 0) {
+            return res.status(400).json({ error: `No se puede eliminar. Hay ${results[0].total} productos en esta ubicación.` });
+        }
+        db.query('DELETE FROM location WHERE idlocation = ?', [id], (err2) => {
+            if (err2) return res.status(500).json({ error: 'Error en el servidor', detalle: err2.message });
+            res.json({ mensaje: 'Ubicación eliminada' });
+        });
+    });
+});
+
 	// 2. Búsqueda por nombre (ANTES de :id)
 	app.get('/api/productos/buscar/:texto', (req, res) => {
 		const { texto } = req.params;
