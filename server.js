@@ -1063,7 +1063,8 @@ app.get('/api/productos/:id/todos-lotes', (req, res) => {
         SELECT 
             b.idbatch, b.batch_number, b.expiration_date, b.batch_stock,
             b.purchase_price, b.sale_price, b.sale_price_b, b.sale_price_c,
-            b.cant_blister, b.cant_box, b.stock_min
+            b.cant_blister, b.cant_box, b.stock_min,
+            b.sale_price_blister, b.sale_price_box
         FROM batch b
         WHERE b.idproduct = ?
         ORDER BY b.expiration_date ASC, b.idbatch ASC
@@ -1245,78 +1246,85 @@ app.delete('/api/batch/:id', (req, res) => {
 
 	// Actualizar lote
 	app.put('/api/batch/:id', (req, res) => {
-		const { id } = req.params;
-		const {
-			batch_number, expiration_date, batch_stock,
-			purchase_price, sale_price, sale_price_b, sale_price_c,
-			cant_blister, cant_box, stock_min
-		} = req.body;
+    const { id } = req.params;
+    const {
+        batch_number, expiration_date, batch_stock,
+        purchase_price, sale_price, sale_price_b, sale_price_c,
+        cant_blister, cant_box, stock_min,
+        sale_price_blister, sale_price_box
+    } = req.body;
 
-		const sql = `
-			UPDATE batch SET
-				batch_number = ?, expiration_date = ?, batch_stock = ?,
-				purchase_price = ?, sale_price = ?, sale_price_b = ?, sale_price_c = ?,
-				cant_blister = ?, cant_box = ?, stock_min = ?
-			WHERE idbatch = ?
-		`;
+    const sql = `
+        UPDATE batch SET
+            batch_number = ?, expiration_date = ?, batch_stock = ?,
+            purchase_price = ?, sale_price = ?, sale_price_b = ?, sale_price_c = ?,
+            cant_blister = ?, cant_box = ?, stock_min = ?,
+            sale_price_blister = ?, sale_price_box = ?
+        WHERE idbatch = ?
+    `;
 
-		db.query(sql, [
-			batch_number || null,
-			expiration_date || null,
-			batch_stock || 0,
-			purchase_price || 0,
-			sale_price || 0,
-			sale_price_b || sale_price || 0,
-			sale_price_c || sale_price || 0,
-			cant_blister || 0,
-			cant_box || 0,
-			stock_min || 0,
-			id
-		], (err) => {
-			if (err) {
-				console.error('Error al actualizar lote:', err);
-				return res.status(500).json({ error: 'Error en el servidor', detalle: err.message });
-			}
-			res.json({ mensaje: 'Lote actualizado' });
-		});
-	});
+    db.query(sql, [
+        batch_number || null,
+        expiration_date || null,
+        batch_stock || 0,
+        purchase_price || 0,
+        sale_price || 0,
+        sale_price_b || sale_price || 0,
+        sale_price_c || sale_price || 0,
+        cant_blister || 0,
+        cant_box || 0,
+        stock_min || 0,
+        sale_price_blister || null,
+        sale_price_box || null,
+        id
+    ], (err) => {
+        if (err) {
+            console.error('Error al actualizar lote:', err);
+            return res.status(500).json({ error: 'Error en el servidor', detalle: err.message });
+        }
+        res.json({ mensaje: 'Lote actualizado' });
+    });
+});
 
 	// Agregar nuevo lote a un producto existente
-	app.post('/api/productos/:id/lotes', (req, res) => {
-		const { id } = req.params;
-		const {
-			batch_number, expiration_date, batch_stock,
-			purchase_price, sale_price, sale_price_b, sale_price_c,
-			cant_blister, cant_box, stock_min
-		} = req.body;
+app.post('/api/productos/:id/lotes', (req, res) => {
+    const { id } = req.params;
+    const {
+        batch_number, expiration_date, batch_stock,
+        purchase_price, sale_price, sale_price_b, sale_price_c,
+        cant_blister, cant_box, stock_min,
+        sale_price_blister, sale_price_box
+    } = req.body;
 
-		const sql = `
-			INSERT INTO batch (idproduct, batch_number, expiration_date, batch_stock,
-				purchase_price, sale_price, sale_price_b, sale_price_c,
-				cant_blister, cant_box, stock_min)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`;
+    const sql = `
+        INSERT INTO batch (idproduct, batch_number, expiration_date, batch_stock,
+            purchase_price, sale_price, sale_price_b, sale_price_c,
+            cant_blister, cant_box, stock_min, sale_price_blister, sale_price_box)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
 
-		db.query(sql, [
-			id,
-			batch_number || null,
-			expiration_date || null,
-			batch_stock || 0,
-			purchase_price || 0,
-			sale_price || 0,
-			sale_price_b || sale_price || 0,
-			sale_price_c || sale_price || 0,
-			cant_blister || 0,
-			cant_box || 0,
-			stock_min || 0
-		], (err, result) => {
-			if (err) {
-				console.error('Error al agregar lote:', err);
-				return res.status(500).json({ error: 'Error en el servidor', detalle: err.message });
-			}
-			res.json({ mensaje: 'Lote agregado', idbatch: result.insertId });
-		});
-	});
+    db.query(sql, [
+        id,
+        batch_number || null,
+        expiration_date || null,
+        batch_stock || 0,
+        purchase_price || 0,
+        sale_price || 0,
+        sale_price_b || sale_price || 0,
+        sale_price_c || sale_price || 0,
+        cant_blister || 0,
+        cant_box || 0,
+        stock_min || 0,
+        sale_price_blister || null,
+        sale_price_box || null
+    ], (err, result) => {
+        if (err) {
+            console.error('Error al agregar lote:', err);
+            return res.status(500).json({ error: 'Error en el servidor', detalle: err.message });
+        }
+        res.json({ mensaje: 'Lote agregado', idbatch: result.insertId });
+    });
+});
 
 // ============================================
 // ELIMINAR PRODUCTO (solo si no tiene lotes)
