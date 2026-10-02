@@ -495,7 +495,73 @@ app.delete('/api/locations/:id', (req, res) => {
 			});
 		});
 	});
+// ============================================
+// CRUD CLIENTES (Editar y Eliminar)
+// ============================================
 
+// Actualizar cliente
+app.put('/api/clientes/:id', (req, res) => {
+    const { id } = req.params;
+    const { ruc_dni, client_name, client_lastname, address, reference, phone, email } = req.body;
+
+    if (!client_name || client_name.trim() === '') {
+        return res.status(400).json({ error: 'El nombre es obligatorio' });
+    }
+
+    const sql = `
+        UPDATE client SET
+            ruc_dni = ?, client_name = ?, client_lastname = ?,
+            address = ?, reference = ?, phone = ?, email = ?
+        WHERE idclient = ?
+    `;
+
+    db.query(sql, [
+        ruc_dni || null,
+        client_name.trim(),
+        client_lastname || null,
+        address || null,
+        reference || null,
+        phone || null,
+        email || null,
+        id
+    ], (err) => {
+        if (err) {
+            console.error('Error al actualizar cliente:', err);
+            if (err.code === 'ER_DUP_ENTRY') {
+                return res.status(400).json({ error: 'El DNI/RUC ya está registrado' });
+            }
+            return res.status(500).json({ error: 'Error en el servidor', detalle: err.message });
+        }
+        res.json({ mensaje: 'Cliente actualizado' });
+    });
+});
+
+// Eliminar cliente
+app.delete('/api/clientes/:id', (req, res) => {
+    const { id } = req.params;
+
+    // No permitir eliminar el PUBLICO GENERAL (idclient = 1)
+    if (parseInt(id) === 1) {
+        return res.status(400).json({ error: 'No se puede eliminar el cliente Público General' });
+    }
+
+    // Verificar si tiene ventas asociadas
+    db.query('SELECT COUNT(*) AS total FROM sale WHERE idclient = ?', [id], (err, results) => {
+        if (err) return res.status(500).json({ error: 'Error en el servidor', detalle: err.message });
+
+        if (results[0].total > 0) {
+            return res.status(400).json({
+                error: `No se puede eliminar. El cliente tiene ${results[0].total} venta(s) registrada(s).`
+            });
+        }
+
+        db.query('DELETE FROM client WHERE idclient = ?', [id], (err2, result) => {
+            if (err2) return res.status(500).json({ error: 'Error en el servidor', detalle: err2.message });
+            if (result.affectedRows === 0) return res.status(404).json({ error: 'Cliente no encontrado' });
+            res.json({ mensaje: 'Cliente eliminado' });
+        });
+    });
+});
 	// Crear nuevo producto + primer lote
 	app.post('/api/productos', (req, res) => {
 		const {
