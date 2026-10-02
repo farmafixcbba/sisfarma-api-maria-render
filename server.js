@@ -944,7 +944,8 @@ app.delete('/api/clientes/:id', (req, res) => {
 
 			// Pie de página
 			doc.moveDown(1);
-			doc.fontSize(8).font('Helvetica').text(`Generado el ${new Date().toLocaleString('es-BO')}`, { align: 'center' });
+			const fechaBolivia = new Date().toLocaleString('es-BO', { timeZone: 'America/La_Paz' });
+			doc.fontSize(8).font('Helvetica').text(`Generado el ${fechaBolivia}`, { align: 'center' });
 			doc.text('SisFarma - Sistema de Farmacia', { align: 'center' });
 
 			doc.end();
