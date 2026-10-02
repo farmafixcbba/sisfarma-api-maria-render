@@ -873,20 +873,17 @@ app.delete('/api/locations/:id', (req, res) => {
 
 	// Obtener lotes disponibles de un producto
 	app.get('/api/productos/:id/lotes', (req, res) => {
-		const { id } = req.params;
-		const sql = `
-			SELECT 
-				b.idbatch, b.batch_number, b.expiration_date, b.batch_stock,
-				b.purchase_price, b.sale_price, b.sale_price_b, b.sale_price_c
-			FROM batch b
-			WHERE b.idproduct = ? AND b.batch_stock > 0
-			ORDER BY b.expiration_date ASC
-		`;
-		db.query(sql, [id], (err, results) => {
-			if (err) return res.status(500).json({ error: 'Error en el servidor', detalle: err.message });
-			res.json(results);
-		});
-	});
+    const { id } = req.params;
+    const sql = `
+        SELECT 
+            b.idbatch, b.batch_number, b.expiration_date, b.batch_stock,
+            b.purchase_price, b.sale_price, b.sale_price_b, b.sale_price_c,
+            b.cant_blister, b.cant_box,
+            b.sale_price_blister, b.sale_price_box
+        FROM batch b
+        WHERE b.idproduct = ? AND b.batch_stock > 0
+        ORDER BY b.expiration_date ASC
+    `;
 
 	// Registrar venta completa (con transacción)
 	app.post('/api/ventas', (req, res) => {
