@@ -1052,6 +1052,45 @@ app.delete('/api/locations/:id', (req, res) => {
 		});
 	});
 
+// ============================================
+// GESTIÓN COMPLETA DE LOTES
+// ============================================
+
+// Obtener TODOS los lotes de un producto (incluso sin stock)
+app.get('/api/productos/:id/todos-lotes', (req, res) => {
+    const { id } = req.params;
+    const sql = `
+        SELECT 
+            b.idbatch, b.batch_number, b.expiration_date, b.batch_stock,
+            b.purchase_price, b.sale_price, b.sale_price_b, b.sale_price_c,
+            b.cant_blister, b.cant_box, b.stock_min
+        FROM batch b
+        WHERE b.idproduct = ?
+        ORDER BY b.expiration_date ASC, b.idbatch ASC
+    `;
+    db.query(sql, [id], (err, results) => {
+        if (err) return res.status(500).json({ error: 'Error en el servidor', detalle: err.message });
+        res.json(results);
+    });
+});
+
+// Eliminar un lote
+app.delete('/api/batch/:id', (req, res) => {
+    const { id } = req.params;
+    db.query('SELECT batch_stock FROM batch WHERE idbatch = ?', [id], (err, results) => {
+        if (err) return res.status(500).json({ error: 'Error en el servidor' });
+        if (results.length === 0) return res.status(404).json({ error: 'Lote no encontrado' });
+        // No dejar eliminar si el lote tiene stock > 0
+        if (parseFloat(results[0].batch_stock) > 0) {
+            return res.status(400).json({ error: 'No se puede eliminar un lote con stock. Baje el stock a 0 primero.' });
+        }
+        db.query('DELETE FROM batch WHERE idbatch = ?', [id], (err2) => {
+            if (err2) return res.status(500).json({ error: 'Error en el servidor', detalle: err2.message });
+            res.json({ mensaje: 'Lote eliminado' });
+        });
+    });
+});
+
 	// 5. Detalle por ID (AL FINAL, porque es genérica)
 	app.get('/api/productos/:id', (req, res) => {
 		const { id } = req.params;
@@ -1069,6 +1108,8 @@ app.delete('/api/locations/:id', (req, res) => {
 				l.laboratory,
 				c.category,
 				loc.location,
+				u.measure AS unit,
+				u.simbol AS unit_symbol,
 				COALESCE((SELECT SUM(b.batch_stock) FROM batch b WHERE b.idproduct = p.idproduct), 0) AS stock_total,
 				COALESCE((SELECT MAX(b.stock_min) FROM batch b WHERE b.idproduct = p.idproduct AND b.stock_min > 0), 0) AS stock_min,
 				(SELECT DATE_FORMAT(MIN(b.expiration_date), '%Y-%m-%d') FROM batch b 
@@ -1081,6 +1122,7 @@ app.delete('/api/locations/:id', (req, res) => {
 			LEFT JOIN laboratory l ON p.idlaboratory = l.idlaboratory
 			LEFT JOIN category c ON p.idcategory = c.idcategory
 			LEFT JOIN location loc ON p.idlocation = loc.idlocation
+			LEFT JOIN unit_of_measure u ON p.idunit = u.idunit
 			WHERE p.idproduct = ?
 		`;
 		db.query(sql, [id], (err, results) => {
