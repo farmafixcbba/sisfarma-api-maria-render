@@ -847,110 +847,135 @@ app.delete('/api/clientes/:id', (req, res) => {
 	// ============================================
 	const PDFDocument = require('pdfkit');
 
-	app.get('/api/reportes/ventas-fecha/pdf', (req, res) => {
-		const { desde, hasta } = req.query;
-		if (!desde || !hasta) {
-			return res.status(400).json({ error: 'Faltan fechas' });
-		}
+	// ============================================
+// REPORTE PDF: VENTAS POR FECHA (con detalle)
+// ============================================
+app.get('/api/reportes/ventas-fecha/pdf', (req, res) => {
+    const { desde, hasta } = req.query;
+    if (!desde || !hasta) {
+        return res.status(400).json({ error: 'Faltan fechas' });
+    }
 
-		const sql = `
-			SELECT 
-				s.idsale, s.date_sale, s.document, s.serie, s.voucher_number,
-				CONCAT(COALESCE(c.client_name,''), ' ', COALESCE(c.client_lastname,'')) AS cliente,
-				u.user_name AS vendedor,
-				s.subtotal, s.igv, s.price_total, s.state
-			FROM sale s
-			LEFT JOIN client c ON s.idclient = c.idclient
-			LEFT JOIN users u ON s.iduser = u.iduser
-			WHERE s.date_sale BETWEEN ? AND ? AND s.state = 'ACEPTADO'
-			ORDER BY s.date_sale ASC, s.idsale ASC
-		`;
+    const sql = `
+        SELECT 
+            s.date_sale,
+            p.barcode,
+            p.product_name,
+            b.batch_number,
+            ds.price,
+            ds.cantp,
+            ds.amount,
+            ds.price_type,
+            ds.utility,
+            ds.fecha
+        FROM detail_sale ds
+        INNER JOIN sale s ON ds.idsale = s.idsale
+        INNER JOIN batch b ON ds.idbatch = b.idbatch
+        INNER JOIN product p ON b.idproduct = p.idproduct
+        WHERE s.date_sale BETWEEN ? AND ? 
+            AND s.state = 'ACEPTADO'
+            AND ds.state = 'VENDIDO'
+        ORDER BY s.date_sale ASC, ds.count ASC
+    `;
 
-		db.query(sql, [desde, hasta], (err, ventas) => {
-			if (err) return res.status(500).json({ error: 'Error', detalle: err.message });
+    db.query(sql, [desde, hasta], (err, items) => {
+        if (err) return res.status(500).json({ error: 'Error', detalle: err.message });
 
-			// Calcular resumen
-			const totalGeneral = ventas.reduce((sum, v) => sum + parseFloat(v.price_total || 0), 0);
-			const totalSubtotal = ventas.reduce((sum, v) => sum + parseFloat(v.subtotal || 0), 0);
-			const totalIva = ventas.reduce((sum, v) => sum + parseFloat(v.igv || 0), 0);
+        // Calcular totales
+        const totalImporte = items.reduce((sum, i) => sum + parseFloat(i.amount || 0), 0);
+        const totalUtilidad = items.reduce((sum, i) => sum + parseFloat(i.utility || 0), 0);
 
-			// Crear PDF
-			const doc = new PDFDocument({ size: 'A4', margin: 40 });
+        // Crear PDF horizontal (landscape)
+        const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 30 });
 
-			// Headers para descargar
-			res.setHeader('Content-Type', 'application/pdf');
-			res.setHeader('Content-Disposition', `inline; filename="ventas_${desde}_${hasta}.pdf"`);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="ventas_${desde}_${hasta}.pdf"`);
 
-			doc.pipe(res);
+        doc.pipe(res);
 
-			// Encabezado
-			doc.fontSize(18).font('Helvetica-Bold').text('REPORTE DE VENTAS POR FECHA', { align: 'center' });
-			doc.moveDown(0.5);
-			doc.fontSize(10).font('Helvetica').text(`Desde: ${desde}  |  Hasta: ${hasta}`, { align: 'center' });
-			doc.moveDown(1);
+        // Encabezado
+        doc.fontSize(16).font('Helvetica-Bold').text('REPORTE DETALLE VENTAS POR FECHA', { align: 'center' });
+        doc.moveDown(0.5);
+        doc.fontSize(10).font('Helvetica');
+        doc.text(`Desde: ${desde}`, 30, doc.y);
+        doc.text(`Hasta: ${hasta}`, 0, doc.y, { align: 'right' });
+        doc.moveDown(1);
 
-			// Resumen
-			doc.fontSize(11).font('Helvetica-Bold').text('RESUMEN:', { underline: true });
-			doc.fontSize(10).font('Helvetica');
-			doc.text(`Cantidad de ventas: ${ventas.length}`);
-			doc.text(`Subtotal: Bs. ${totalSubtotal.toFixed(2)}`);
-			doc.text(`IVA: Bs. ${totalIva.toFixed(2)}`);
-			doc.text(`TOTAL GENERAL: Bs. ${totalGeneral.toFixed(2)}`);
-			doc.moveDown(1);
+        // Columnas
+        const cols = [
+            { label: 'FECHA', x: 30, w: 70 },
+            { label: 'COD. BARRAS', x: 100, w: 80 },
+            { label: 'DESCRIPCION', x: 180, w: 180 },
+            { label: 'N° LOTE', x: 360, w: 80 },
+            { label: 'PRECIO', x: 440, w: 55 },
+            { label: 'CANT', x: 495, w: 45 },
+            { label: 'IMPORTE', x: 540, w: 65 },
+            { label: 'TIPO PRECIO', x: 605, w: 70 },
+            { label: 'UTILIDAD', x: 675, w: 65 },
+        ];
 
-			// Tabla de ventas
-			doc.fontSize(11).font('Helvetica-Bold').text('DETALLE:', { underline: true });
-			doc.moveDown(0.5);
+        // Encabezado de tabla
+        const startY = doc.y;
+        doc.fontSize(9).font('Helvetica-Bold');
+        cols.forEach(col => {
+            doc.text(col.label, col.x, startY, { width: col.w });
+        });
+        doc.moveDown(0.5);
+        doc.moveTo(30, doc.y).lineTo(740, doc.y).stroke();
+        doc.moveDown(0.3);
 
-			const startY = doc.y;
-			const cols = [
-				{ label: 'Fecha', x: 40, w: 70 },
-				{ label: 'Comprobante', x: 115, w: 100 },
-				{ label: 'Cliente', x: 220, w: 150 },
-				{ label: 'Vendedor', x: 375, w: 70 },
-				{ label: 'Total', x: 450, w: 70 },
-			];
+        // Filas
+        doc.fontSize(8).font('Helvetica');
+        items.forEach(item => {
+            if (doc.y > 550) {
+                doc.addPage({ size: 'A4', layout: 'landscape', margin: 30 });
+                doc.fontSize(8).font('Helvetica');
+            }
 
-			// Encabezados
-			doc.fontSize(9).font('Helvetica-Bold');
-			cols.forEach(col => {
-				doc.text(col.label, col.x, doc.y, { width: col.w, continued: false });
-			});
-			doc.moveDown(0.3);
-			doc.moveTo(40, doc.y).lineTo(520, doc.y).stroke();
-			doc.moveDown(0.3);
+            const y = doc.y;
+            const fecha = (item.date_sale || '').toString().substring(0, 10);
+            const barcode = item.barcode || '-';
+            const desc = (item.product_name || '').substring(0, 40);
+            const lote = (item.batch_number || '-').substring(0, 15);
+            const precio = parseFloat(item.price || 0).toFixed(2);
+            const cant = parseFloat(item.cantp || 0).toFixed(0);
+            const importe = parseFloat(item.amount || 0).toFixed(2);
+            const tipo = (item.price_type || 'UNIDAD').toUpperCase();
+            const utilidad = parseFloat(item.utility || 0).toFixed(2);
 
-			// Filas
-			doc.fontSize(8).font('Helvetica');
-			ventas.forEach(v => {
-				if (doc.y > 750) {
-					doc.addPage();
-					doc.fontSize(8);
-				}
-				const y = doc.y;
-				const fecha = (v.date_sale || '').toString().substring(0, 10);
-				const comprobante = `${v.serie || ''}${v.voucher_number || ''}`;
-				const cliente = (v.cliente || '').trim() || '-';
-				const vendedor = v.vendedor || '-';
-				const total = `Bs. ${parseFloat(v.price_total || 0).toFixed(2)}`;
+            doc.text(fecha, cols[0].x, y, { width: cols[0].w });
+            doc.text(barcode, cols[1].x, y, { width: cols[1].w });
+            doc.text(desc, cols[2].x, y, { width: cols[2].w });
+            doc.text(lote, cols[3].x, y, { width: cols[3].w });
+            doc.text(precio, cols[4].x, y, { width: cols[4].w });
+            doc.text(cant, cols[5].x, y, { width: cols[5].w });
+            doc.text(importe, cols[6].x, y, { width: cols[6].w });
+            doc.text(tipo, cols[7].x, y, { width: cols[7].w });
+            doc.text(utilidad, cols[8].x, y, { width: cols[8].w });
+            doc.moveDown(0.4);
+        });
 
-				doc.text(fecha, 40, y, { width: 70 });
-				doc.text(comprobante, 115, y, { width: 100 });
-				doc.text(cliente.substring(0, 30), 220, y, { width: 150 });
-				doc.text(vendedor, 375, y, { width: 70 });
-				doc.text(total, 450, y, { width: 70 });
-				doc.moveDown(0.3);
-			});
+        // Totales
+        doc.moveDown(1);
+        doc.moveTo(30, doc.y).lineTo(740, doc.y).stroke();
+        doc.moveDown(0.5);
+        doc.fontSize(10).font('Helvetica-Bold');
+        doc.text(`Total importe:  Bs. ${totalImporte.toFixed(2)}`, 400, doc.y, { width: 150, align: 'left' });
+        doc.text(`Total utilidad:  Bs. ${totalUtilidad.toFixed(2)}`, 570, doc.y - 12, { width: 150, align: 'left' });
+        doc.moveDown(1);
 
-			// Pie de página
-			doc.moveDown(1);
-			const fechaBolivia = new Date().toLocaleString('es-BO', { timeZone: 'America/La_Paz' });
-			doc.fontSize(8).font('Helvetica').text(`Generado el ${fechaBolivia}`, { align: 'center' });
-			doc.text('SisFarma - Sistema de Farmacia', { align: 'center' });
+        doc.fontSize(9).font('Helvetica');
+        doc.text(`Total registros: ${items.length}`, 400, doc.y, { width: 200, align: 'right' });
 
-			doc.end();
-		});
-	});
+        // Pie
+        doc.moveDown(1);
+        const fechaBolivia = new Date().toLocaleString('es-BO', { timeZone: 'America/La_Paz' });
+        doc.fontSize(8).font('Helvetica').text(`Generado el ${fechaBolivia}`, { align: 'center' });
+        doc.text('SisFarma - Sistema de Farmacia', { align: 'center' });
+
+        doc.end();
+    });
+});
 
 	// Obtener lotes disponibles de un producto
 app.get('/api/productos/:id/lotes', (req, res) => {
