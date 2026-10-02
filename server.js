@@ -1475,6 +1475,127 @@ app.delete('/api/productos/:id', (req, res) => {
     });
 });
 
+// ============================================
+// CRUD INGRESO / EGRESO
+// ============================================
+
+// Listar movimientos (por rango de fechas)
+app.get('/api/ingresos-egresos', (req, res) => {
+    const { desde, hasta } = req.query;
+    if (!desde || !hasta) {
+        return res.status(400).json({ error: 'Faltan fechas' });
+    }
+    const sql = `
+        SELECT 
+            id_entry_discharge, date_entry_discharge, number, iduser,
+            description, type, amount, observation
+        FROM entry_discharge
+        WHERE date_entry_discharge BETWEEN ? AND ?
+        ORDER BY date_entry_discharge DESC, id_entry_discharge DESC
+    `;
+    db.query(sql, [desde, hasta], (err, results) => {
+        if (err) return res.status(500).json({ error: 'Error en el servidor', detalle: err.message });
+        res.json(results);
+    });
+});
+
+// Crear movimiento
+app.post('/api/ingresos-egresos', (req, res) => {
+    const { date_entry_discharge, description, type, amount, observation, iduser } = req.body;
+
+    if (!description || description.trim() === '') {
+        return res.status(400).json({ error: 'El concepto es obligatorio' });
+    }
+    if (!type || (type !== 'INGRESO' && type !== 'EGRESO')) {
+        return res.status(400).json({ error: 'El tipo debe ser INGRESO o EGRESO' });
+    }
+    if (amount === undefined || amount <= 0) {
+        return res.status(400).json({ error: 'El importe debe ser mayor a 0' });
+    }
+
+    // Generar número correlativo simple
+    db.query(
+        "SELECT COALESCE(MAX(CAST(number AS UNSIGNED)), 0) + 1 AS siguiente FROM entry_discharge",
+        (err, results) => {
+            if (err) return res.status(500).json({ error: 'Error al generar número' });
+            const numero = String(results[0].siguiente).padStart(6, '0');
+
+            const sql = `
+                INSERT INTO entry_discharge 
+                (date_entry_discharge, number, iduser, description, type, amount, observation)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            `;
+            db.query(sql, [
+                date_entry_discharge || new Date().toISOString().substring(0, 10),
+                numero,
+                iduser || null,
+                description.trim(),
+                type,
+                amount,
+                observation || null
+            ], (err2, result) => {
+                if (err2) {
+                    console.error('Error al crear movimiento:', err2);
+                    return res.status(500).json({ error: 'Error en el servidor', detalle: err2.message });
+                }
+                res.json({ mensaje: 'Movimiento registrado', id_entry_discharge: result.insertId, number: numero });
+            });
+        }
+    );
+});
+
+// Eliminar movimiento
+app.delete('/api/ingresos-egresos/:id', (req, res) => {
+    const { id } = req.params;
+    db.query('DELETE FROM entry_discharge WHERE id_entry_discharge = ?', [id], (err, result) => {
+        if (err) return res.status(500).json({ error: 'Error en el servidor', detalle: err.message });
+        if (result.affectedRows === 0) return res.status(404).json({ error: 'Movimiento no encontrado' });
+        res.json({ mensaje: 'Movimiento eliminado' });
+    });
+});
+
+// Resumen de caja (con ingresos, egresos, ventas y saldo)
+app.get('/api/reportes/caja-completo', (req, res) => {
+    const { fecha } = req.query;
+    if (!fecha) return res.status(400).json({ error: 'Falta fecha' });
+
+    // Ventas del día
+    const sqlVentas = `
+        SELECT COALESCE(SUM(price_total), 0) AS total_ventas
+        FROM sale
+        WHERE date_sale = ? AND state = 'ACEPTADO'
+    `;
+
+    // Ingresos y egresos del día
+    const sqlMovimientos = `
+        SELECT 
+            COALESCE(SUM(CASE WHEN type = 'INGRESO' THEN amount ELSE 0 END), 0) AS total_ingresos,
+            COALESCE(SUM(CASE WHEN type = 'EGRESO' THEN amount ELSE 0 END), 0) AS total_egresos
+        FROM entry_discharge
+        WHERE date_entry_discharge = ?
+    `;
+
+    db.query(sqlVentas, [fecha], (err, ventas) => {
+        if (err) return res.status(500).json({ error: 'Error ventas', detalle: err.message });
+
+        db.query(sqlMovimientos, [fecha], (err2, mov) => {
+            if (err2) return res.status(500).json({ error: 'Error movimientos', detalle: err2.message });
+
+            const totalVentas = parseFloat(ventas[0].total_ventas || 0);
+            const totalIngresos = parseFloat(mov[0].total_ingresos || 0);
+            const totalEgresos = parseFloat(mov[0].total_egresos || 0);
+            const saldo = totalVentas + totalIngresos - totalEgresos;
+
+            res.json({
+                total_ventas: totalVentas.toFixed(2),
+                total_ingresos: totalIngresos.toFixed(2),
+                total_egresos: totalEgresos.toFixed(2),
+                saldo_final: saldo.toFixed(2)
+            });
+        });
+    });
+});
+
 	// ============================================
 	// INICIAR SERVIDOR
 	// ============================================
