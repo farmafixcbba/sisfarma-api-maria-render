@@ -549,17 +549,31 @@ app.delete('/api/clientes/:id', (req, res) => {
     db.query('SELECT COUNT(*) AS total FROM sale WHERE idclient = ?', [id], (err, results) => {
         if (err) return res.status(500).json({ error: 'Error en el servidor', detalle: err.message });
 
-        if (results[0].total > 0) {
-            return res.status(400).json({
-                error: `No se puede eliminar. El cliente tiene ${results[0].total} venta(s) registrada(s).`
+        const tieneVentas = results[0].total > 0;
+
+        if (tieneVentas) {
+            // Reasignar ventas a Público General (idclient = 1) y luego eliminar
+            db.query('UPDATE sale SET idclient = 1 WHERE idclient = ?', [id], (err2) => {
+                if (err2) return res.status(500).json({ error: 'Error al reasignar ventas', detalle: err2.message });
+
+                db.query('DELETE FROM client WHERE idclient = ?', [id], (err3, result) => {
+                    if (err3) return res.status(500).json({ error: 'Error al eliminar', detalle: err3.message });
+                    if (result.affectedRows === 0) return res.status(404).json({ error: 'Cliente no encontrado' });
+                    res.json({
+                        mensaje: 'Cliente eliminado',
+                        ventas_reasignadas: results[0].total,
+                        detalle: `Se reasignaron ${results[0].total} ventas a Público General.`
+                    });
+                });
+            });
+        } else {
+            // Sin ventas, eliminar directamente
+            db.query('DELETE FROM client WHERE idclient = ?', [id], (err2, result) => {
+                if (err2) return res.status(500).json({ error: 'Error en el servidor', detalle: err2.message });
+                if (result.affectedRows === 0) return res.status(404).json({ error: 'Cliente no encontrado' });
+                res.json({ mensaje: 'Cliente eliminado' });
             });
         }
-
-        db.query('DELETE FROM client WHERE idclient = ?', [id], (err2, result) => {
-            if (err2) return res.status(500).json({ error: 'Error en el servidor', detalle: err2.message });
-            if (result.affectedRows === 0) return res.status(404).json({ error: 'Cliente no encontrado' });
-            res.json({ mensaje: 'Cliente eliminado' });
-        });
     });
 });
 	// Crear nuevo producto + primer lote
